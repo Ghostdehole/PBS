@@ -77,9 +77,11 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     # 9️⃣ 上传 exe/zip 到 Release
-    - name: Upload Release Assets
-      uses: softprops/action-gh-release@v1
+    - uses: softprops/action-gh-release@v1
       with:
-        files: build/PowerBrightnessSync.exe, build/PowerBrightnessSync.zip
+        tag_name: ${{ steps.version.outputs.tag_name }}
+        files: |
+          build/PowerBrightnessSync.exe
+          build/PowerBrightnessSync.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
