@@ -1,0 +1,70 @@
+name: Build and Release PowerBrightnessSync
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'       # 支持语义化版本标签 v1.0.0
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+    # 1️⃣ 检出代码
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # 2️⃣ 设置 MSBuild
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1
+      with:
+        vs-version: latest
+
+    # 3️⃣ 创建输出目录
+    - name: Create build directory
+      run: mkdir build
+
+    # 4️⃣ 编译 PowerBrightnessSync.cpp
+    - name: Compile PowerBrightnessSync
+      shell: cmd
+      run: |
+        cl /EHsc /std:c++17 /D_WIN32_WINNT=0x0601 /O2 PowerBrightnessSync.cpp /link PowrProf.lib user32.lib shell32.lib advapi32.lib /OUT:build\PowerBrightnessSync.exe
+
+    # 5️⃣ 压缩 exe
+    - name: Zip executable
+      shell: powershell
+      run: |
+        Compress-Archive -Path build\PowerBrightnessSync.exe -DestinationPath build\PowerBrightnessSync.zip
+
+    # 6️⃣ 确定版本号
+    - name: Determine release version
+      id: version
+      run: |
+        if [ -n "${GITHUB_REF##refs/tags/}" ]; then
+          echo "tag_name=${GITHUB_REF##refs/tags/}" >> $GITHUB_OUTPUT
+        else
+          echo "tag_name=v${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
+        fi
+
+    # 7️⃣ 创建 GitHub Release
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.tag_name }}
+        name: PowerBrightnessSync ${{ steps.version.outputs.tag_name }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 8️⃣ 上传 exe/zip 到 Release
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/PowerBrightnessSync.exe, build/PowerBrightnessSync.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
