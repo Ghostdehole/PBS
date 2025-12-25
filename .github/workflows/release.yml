@@ -1,4 +1,4 @@
-name: Build and Release PowerBrightnessSync
+name: Build and Release BrightnessSync
 
 on:
   push:
@@ -17,52 +17,61 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    # 2️⃣ 设置 MSBuild
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v1
-      with:
-        vs-version: latest
+    # 2️⃣ 安装 vswhere，用于定位 Visual Studio
+    - name: Install vswhere
+      shell: powershell
+      run: |
+        Invoke-WebRequest -Uri https://github.com/microsoft/vswhere/releases/download/2.8.4/vswhere.exe -OutFile vswhere.exe
 
-    # 3️⃣ 创建输出目录
+    # 3️⃣ 找到最新 Visual Studio 的安装路径
+    - name: Find Visual Studio installation path
+      id: vs
+      shell: powershell
+      run: |
+        $path = .\vswhere.exe -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        Write-Output "VS_PATH=$path" >> $env:GITHUB_ENV
+
+    # 4️⃣ 创建输出目录
     - name: Create build directory
       run: mkdir build
 
-    # 4️⃣ 编译 PowerBrightnessSync.cpp
-    - name: Compile PowerBrightnessSync
+    # 5️⃣ 编译 BrightnessSync.cpp
+    - name: Compile BrightnessSync
       shell: cmd
       run: |
+        call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64
         cl /EHsc /std:c++17 /D_WIN32_WINNT=0x0601 /O2 PowerBrightnessSync.cpp /link PowrProf.lib user32.lib shell32.lib advapi32.lib /OUT:build\PowerBrightnessSync.exe
 
-    # 5️⃣ 压缩 exe
+    # 6️⃣ 压缩 exe
     - name: Zip executable
       shell: powershell
       run: |
         Compress-Archive -Path build\PowerBrightnessSync.exe -DestinationPath build\PowerBrightnessSync.zip
 
-    # 6️⃣ 确定版本号
+    # 7️⃣ 确定 Release 版本号
     - name: Determine release version
       id: version
       run: |
-        if [ -n "${GITHUB_REF##refs/tags/}" ]; then
-          echo "tag_name=${GITHUB_REF##refs/tags/}" >> $GITHUB_OUTPUT
+        if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
         else
           echo "tag_name=v${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
         fi
 
-    # 7️⃣ 创建 GitHub Release
+    # 8️⃣ 创建 GitHub Release
     - name: Create Release
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.version.outputs.tag_name }}
-        name: PowerBrightnessSync ${{ steps.version.outputs.tag_name }}
+        name: BrightnessSync ${{ steps.version.outputs.tag_name }}
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 8️⃣ 上传 exe/zip 到 Release
-    - name: Upload Release Asset
+    # 9️⃣ 上传 exe/zip 到 Release
+    - name: Upload Release Assets
       uses: softprops/action-gh-release@v1
       with:
         files: build/PowerBrightnessSync.exe, build/PowerBrightnessSync.zip
