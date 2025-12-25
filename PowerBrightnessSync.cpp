@@ -1,4 +1,6 @@
 #define _WIN32_WINNT 0x0601
+#define UNICODE
+#define _UNICODE
 #include <windows.h>
 #include <powrprof.h>
 #include <shlobj.h>
@@ -179,13 +181,16 @@ bool ReadBrightness(const GUID& scheme, Brightness& b) {
         return false;
     }
 
-    DWORD oldAC = b.ac, oldDC = b.dc;
-    b.ac = std::clamp(b.ac, 0u, 100u);
-    b.dc = std::clamp(b.dc, 0u, 100u);
-    if(oldAC != b.ac || oldDC != b.dc)
-        g_logger.Log("Brightness values adjusted: AC %lu->%lu, DC %lu->%lu", oldAC, b.ac, oldDC, b.dc);
+	DWORD oldAC = b.ac, oldDC = b.dc;
+	// 显式指定模板类型 DWORD，避免 MSVC 推导失败
+	b.ac = std::clamp<DWORD>(b.ac, 0u, 100u);
+	b.dc = std::clamp<DWORD>(b.dc, 0u, 100u);
 
-    return true;
+	if(oldAC != b.ac || oldDC != b.dc)
+		g_logger.Log("Brightness values adjusted: AC %lu->%lu, DC %lu->%lu", oldAC, b.ac, oldDC, b.dc);
+
+	return true;
+
 }
 
 void WriteBrightnessWithRetry(GUID& scheme, const Brightness& b, DWORD index) {
@@ -301,7 +306,17 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR lpCmdLine, int) {
 
     if(!RegisterClass(&wc)) { g_logger.Log("Failed to register window class"); return 1; }
 
-    HWND hwnd = CreateWindow(wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, hInst, nullptr);
+    HWND hwnd = CreateWindowExW(
+        0,
+        wc.lpszClassName, // 需确保 wc.lpszClassName 为宽字符 L"类名"
+        L"",              // 空标题
+        0,
+        0, 0, 0, 0,
+        HWND_MESSAGE,
+        nullptr,
+        hInst,
+        nullptr
+    );
     if(!hwnd) { g_logger.Log("Failed to create hidden window"); return 1; }
 
     HPOWERNOTIFY hNotify = RegisterPowerSettingNotification(hwnd, &kGuidVideoBrightness, DEVICE_NOTIFY_WINDOW_HANDLE);
