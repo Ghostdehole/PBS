@@ -323,8 +323,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR lpCmdLine, int) {
     }
 
     std::string cmd(lpCmdLine ? lpCmdLine : "");
-    if(cmd.find("--enable-autobrightness") != std::string::npos) { EnableAutoRun(); return 0; }
-    if(cmd.find("--disable-autobrightness") != std::string::npos) { DisableAutoRun(); return 0; }
+    if(cmd.find("--onar") != std::string::npos) { EnableAutoRun(); return 0; }
+    if(cmd.find("--ofar") != std::string::npos) { DisableAutoRun(); return 0; }
 
     WNDCLASS wc{};
     wc.lpfnWndProc = WndProc;
