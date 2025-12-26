@@ -242,36 +242,63 @@ void SyncBrightness() {
 void EnableAutoRun() {
     char exe[MAX_PATH] = {};
     DWORD len = GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    if(len == 0 || len == MAX_PATH) { g_logger.Log("GetModuleFileNameA failed"); return; }
+    if (len == 0 || len >= MAX_PATH) {
+        g_logger.Log("GetModuleFileNameA failed");
+        return;
+    }
 
     std::string exeStr(exe);
-    std::replace(exeStr.begin(), exeStr.end(), '\"', '\''); 
+    std::replace(exeStr.begin(), exeStr.end(), '\"', '\'');
     std::string exePath = "\"" + exeStr + "\"";
 
     HKEY hKey;
-    if(RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                     0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-        char existing[MAX_PATH] = {};
-        DWORD size = sizeof(existing);
-        if(RegQueryValueExA(hKey, "PowerBrightnessSync", nullptr, nullptr, (BYTE*)existing, &size) == ERROR_SUCCESS) {
-            g_logger.Log("Auto-run already exists.");
-            RegCloseKey(hKey);
-            return;
-        }
-        RegSetValueExA(hKey, "PowerBrightnessSync", 0, REG_SZ, (BYTE*)exePath.c_str(), (DWORD)(exePath.size()+1));
-        RegCloseKey(hKey);
-        g_logger.Log("Auto-run enabled");
-    } else g_logger.Log("Failed to open Run key for auto-run");
+    if (RegOpenKeyExA(
+            HKEY_CURRENT_USER,
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            0,
+            KEY_SET_VALUE,
+            &hKey
+        ) != ERROR_SUCCESS) {
+        g_logger.Log("Failed to open Run key for auto-run");
+        return;
+    }
+
+    LONG ret = RegSetValueExA(
+        hKey,
+        "PowerBrightnessSync",
+        0,
+        REG_SZ,
+        reinterpret_cast<const BYTE*>(exePath.c_str()),
+        static_cast<DWORD>(exePath.size() + 1)
+    );
+
+    RegCloseKey(hKey);
+
+    if (ret == ERROR_SUCCESS) {
+        g_logger.Log("Auto-run enabled (force write)");
+    } else {
+        g_logger.Log("Failed to write auto-run registry value");
+    }
 }
 
 void DisableAutoRun() {
     HKEY hKey;
-    if(RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                     0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-        RegDeleteValueA(hKey, "PowerBrightnessSync");
-        RegCloseKey(hKey);
-        g_logger.Log("Auto-run disabled");
-    } else g_logger.Log("Failed to open Run key to disable auto-run");
+    if (RegOpenKeyExA(
+            HKEY_CURRENT_USER,
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            0,
+            KEY_SET_VALUE,
+            &hKey
+        ) != ERROR_SUCCESS) {
+        g_logger.Log("Failed to open Run key to disable auto-run");
+        return;
+    }
+
+    // 不关心是否存在，直接删
+    RegDeleteValueA(hKey, "PowerBrightnessSync");
+    RegCloseKey(hKey);
+
+    g_logger.Log("Auto-run disabled");
 }
 
 // ================= 窗口消息 =================
