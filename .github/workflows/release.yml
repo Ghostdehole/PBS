@@ -2,17 +2,18 @@ name: Build and Release PowerBrightnessSync
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - 'v*.*.*'       # 支持语义化版本标签 v1.0.0
-  workflow_dispatch:
+      - 'v*.*.*'       # 只有打标签时才发布 Release
+    branches:
+      - main           # main 分支提交只触发构建和上传 Artifact，不发布 Release
+  workflow_dispatch:   # 允许手动触发
 
 permissions:
   contents: write
 
 jobs:
-  build-release:
+  build:
+    name: Build Windows Executable
     runs-on: windows-latest
 
     steps:
@@ -20,68 +21,53 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    # 2️⃣ 安装 vswhere，用于定位 Visual Studio
-    - name: Install vswhere
-      shell: powershell
-      run: |
-        Invoke-WebRequest -Uri https://github.com/microsoft/vswhere/releases/download/2.8.4/vswhere.exe -OutFile vswhere.exe
+    # 2️⃣ 配置 MSVC 编译环境 (替代手写的 vswhere)
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
 
-    # 3️⃣ 找到最新 Visual Studio 的安装路径
-    - name: Find Visual Studio installation path
-      id: vs
-      shell: powershell
-      run: |
-        $path = .\vswhere.exe -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        Write-Output "VS_PATH=$path" >> $env:GITHUB_ENV
-
-    # 4️⃣ 创建输出目录
+    # 3️⃣ 创建输出目录
     - name: Create build directory
       run: mkdir build
 
-    # 5️⃣ 编译 PowerBrightnessSync.cpp
+    # 4️⃣ 编译 (核心优化部分)
+    # /MT: 静态链接运行库，无需用户安装 VC++ Redistributable
+    # /DUNICODE /D_UNICODE: 强制 Unicode 模式，适配 wWinMain
+    # /MANIFESTUAC: 嵌入管理员权限请求，图标会自动带盾牌
     - name: Compile PowerBrightnessSync
       shell: cmd
       run: |
-        call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64
-        cl /EHsc /std:c++17 /D_WIN32_WINNT=0x0601 /O2 PowerBrightnessSync.cpp /link PowrProf.lib user32.lib shell32.lib advapi32.lib /OUT:build\PowerBrightnessSync.exe
+        cl /nologo /EHsc /std:c++17 /O2 /MT ^
+        /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 ^
+        PowerBrightnessSync.cpp ^
+        /link /SUBSYSTEM:WINDOWS ^
+        /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" ^
+        PowrProf.lib User32.lib Shell32.lib Advapi32.lib Ole32.lib ^
+        /OUT:build\PowerBrightnessSync.exe
 
-    # 6️⃣ 压缩 exe
+    # 5️⃣ 压缩文件
     - name: Zip executable
       shell: powershell
       run: |
         Compress-Archive -Path build\PowerBrightnessSync.exe -DestinationPath build\PowerBrightnessSync.zip
 
-    # 7️⃣ 确定 Release 版本号
-    - name: Determine release version
-      id: version
-      shell: pwsh
-      run: |
-        if ($env:GITHUB_REF -like 'refs/tags/*') {
-            $tag = $env:GITHUB_REF -replace 'refs/tags/', ''
-            echo "tag_name=$tag" | Out-File -Encoding utf8 -Append $env:GITHUB_OUTPUT
-        }
-        else {
-            echo "tag_name=v$($env:GITHUB_RUN_NUMBER)" | Out-File -Encoding utf8 -Append $env:GITHUB_OUTPUT
-        }
+    # 6️⃣ 上传构建产物 (方便在不发版的情况下测试)
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: PowerBrightnessSync-Build
+        path: build/PowerBrightnessSync.exe
 
-    # 8️⃣ 创建 GitHub Release
+    # 7️⃣ 发布 Release (仅当检测到 Tag 时执行)
     - name: Create Release
-      id: create_release
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.version.outputs.tag_name }}
-        name: PowerBrightnessSync ${{ steps.version.outputs.tag_name }}
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    # 9️⃣ 上传 exe/zip 到 Release
-    - uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.version.outputs.tag_name }}
         files: |
           build/PowerBrightnessSync.exe
           build/PowerBrightnessSync.zip
+        draft: false
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
