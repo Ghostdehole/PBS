@@ -1,6 +1,7 @@
 # PowerBrightnessSync
 
 PowerBrightnessSync 是一款 Windows 工具，用于同步所有电源计划的屏幕亮度，并支持开机自启和日志记录。
+本工具目前未经过任何测试，如遇到问题请提交Issues
 
 ## 功能
 
