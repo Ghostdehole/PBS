@@ -1,0 +1,60 @@
+name: Build and Release PowerBrightnessSync
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows Executable
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+
+    - name: Create build directory
+      run: mkdir build
+
+    - name: Compile PowerBrightnessSync
+      run: |
+        cl /nologo /EHsc /std:c++17 /O1 /MT /GL /DNDEBUG /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 `
+        PowerBrightnessSync.cpp `
+        /link /LTCG /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF `
+        /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" `
+        /OUT:build\PowerBrightnessSync.exe
+
+    - name: Zip executable
+      shell: powershell
+      run: |
+        Compress-Archive -Path build\PowerBrightnessSync.exe -DestinationPath build\PowerBrightnessSync.zip
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: PowerBrightnessSync-Build
+        path: build/PowerBrightnessSync.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          build/PowerBrightnessSync.exe
+          build/PowerBrightnessSync.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
