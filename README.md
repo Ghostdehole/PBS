@@ -1,44 +1,80 @@
 # PowerBrightnessSync
 
-> ⚡ **极致轻量化的 Windows 亮度同步工具**
+> ⚡ **极致轻量化的 Windows 屏幕亮度同步工具**
 
-PowerBrightnessSync 是一款专为 Windows 设计的微型实用工具。它驻留在后台，自动检测当前的屏幕亮度变化，并将该亮度值同步应用到系统中的**所有电源计划**（Power Schemes）。
+PowerBrightnessSync 是一款专为 Windows 设计的后台常驻小工具。  
+它会监听系统的 **屏幕亮度变化与显示状态变化事件**，并将当前亮度值**同步写入所有电源计划（Power Schemes）**。
 
-主要解决 Windows 在插拔电源适配器或切换电源模式时，屏幕亮度突然跳变导致视觉不适的问题。
+主要用于解决 Windows 在 **插拔电源、切换电源模式或显示器唤醒时亮度突然跳变**，导致视觉不适的问题。
 
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Ghostdehole/PBS)
 [![License](https://img.shields.io/github/license/Ghostdehole/PBS?color=green)](https://github.com/Ghostdehole/PBS/blob/main/LICENSE)
 [![Download](https://img.shields.io/github/v/release/Ghostdehole/PBS?color=brightgreen)](https://github.com/Ghostdehole/PBS/releases)
 
+---
+
 ## ✨ 核心特性
 
-- **极致省电**：采用纯 Win32 API 编写，无多余依赖，专为笔记本续航优化。
-- **零 CPU 占用**：完全基于事件驱动（Event-Driven）。只有在您拖动亮度条时才会唤醒，其余时间 CPU 占用率为 **0%**。
-- **内存微缩**：利用工作集修剪技术，后台挂起时物理内存占用仅 **100KB - 800KB**。
-- **智能防抖**：内置防抖算法，避免在滑动亮度条时频繁写入注册表，保护 SSD 寿命。
-- **静默运行**：无窗口、无托盘图标，完全透明运行（Ghost Mode）。
+- **全电源计划亮度同步**  
+  自动将当前活动电源计划的亮度值，同步到系统内的所有电源方案，避免切换时亮度突变。
+
+- **纯 Win32 实现，无依赖**  
+  仅使用 Windows 原生 API（PowrProf / User32），无 C++ Runtime 依赖，体积极小。
+
+- **事件驱动，零空转 CPU**  
+  基于 `WM_POWERBROADCAST` 事件，仅在亮度或显示状态变化时被唤醒，其余时间完全休眠。
+
+- **智能防抖机制**  
+  内置 400ms 防抖定时器，避免拖动亮度条时频繁写入电源配置，减少系统与 SSD 压力。
+
+- **极低内存占用**  
+  使用工作集修剪（Working Set Trimming），后台驻留时物理内存占用通常低于 **1MB**。
+
+- **静默运行（Ghost Mode）**  
+  无窗口、无托盘图标、无日志输出，完全透明运行。
+
+- **单实例保护**  
+  使用全局互斥体，确保系统中仅运行一个实例。
+
+---
 
 ## 🚀 快速开始
 
 ### 系统要求
 - Windows 7 / 8 / 10 / 11
-- **必须以管理员身份运行** (需要权限修改非当前激活的电源方案)
+- **必须以管理员身份运行**
 
-### 安装与运行
-本程序为绿色单文件，无需安装：
-1. 下载最新发布的 `.exe` 文件。
-2. 右键 -> **以管理员身份运行**。
-3. 程序启动后会立即同步一次亮度，随即进入后台静默监听模式。
+> ⚠️ **为什么需要管理员权限？**  
+> Windows 默认只允许修改“当前激活”的电源计划。  
+> 本工具会同步修改**所有电源方案**的亮度设置，因此必须使用管理员权限。
 
-> ⚠️ **注意**：程序运行后没有界面和托盘图标。如需确认是否运行，请在任务管理器中查找 `PowerBrightnessSync.exe`。
+---
 
-### 停止程序
-由于程序设计为极致隐形，若需关闭程序，请使用 **任务管理器** 结束进程，或在命令行执行：
+### 运行方式
+
+本程序为 **绿色单文件**，无需安装：
+
+1. 下载最新发布的 `PowerBrightnessSync.exe`
+2. 右键 → **以管理员身份运行**
+3. 启动后会立即同步一次亮度，随后进入后台监听模式
+
+> 程序启动后不会显示任何窗口或托盘图标  
+> 如需确认是否运行，请在任务管理器中查找 `PowerBrightnessSync.exe`
+
+---
+
+### 退出程序
+
+由于程序设计为完全静默运行，如需退出请使用以下方式之一：
+
+- **任务管理器** → 结束进程
+- 命令行：
 ```cmd
 taskkill /f /im PowerBrightnessSync.exe
 ```
-## ⚙️ 命令行选项
+## ⚙️ 命令行选项（开机自启）
 程序支持通过命令行参数快速配置开机自启。
+自启通过 Windows 任务计划程序（schtasks） 实现，而非注册表。
 - **注意：配置命令执行完毕后会自动退出，不会启动后台服务。**
 
  |参数|功能说明|
@@ -62,13 +98,37 @@ PowerBrightnessSync.exe --ofar
 推荐使用 MSVC 命令行进行极致体积优化编译：
 
 ```cmd
-cl /nologo /EHsc /std:c++17 /O1 /MT /GL /DNDEBUG /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 ^
+cl /nologo /EHsc /std:c++17 /O1 /MT /GL /DNDEBUG ^
+/DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 ^
 PowerBrightnessSync.cpp ^
 /link /LTCG /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF ^
-/MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" ^
+/MANIFEST:EMBED ^
+/MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" ^
 /OUT:PowerBrightnessSync.exe
 ```
+## 🔍 工作原理简述
+
+程序通过监听系统电源广播事件（`WM_POWERBROADCAST`）运行，主要关注以下变化：
+
+- 屏幕亮度变化  
+- 显示器开关 / 唤醒状态变化  
+
+当相关事件触发后，程序不会立即执行同步，而是先进入**防抖计时阶段**，避免在短时间内频繁写入电源配置。
+
+防抖计时结束后，程序将执行以下步骤：
+
+1. 读取当前**活动电源计划**中的屏幕亮度值  
+2. 将该亮度值同步写入系统内的**所有其他电源方案**  
+3. 同步完成后，主动释放进程工作集，使进程重新进入低内存、休眠等待状态  
+
+---
+
 ## 📝 免责声明
-本工具涉及系统电源方案注册表的读写操作。虽然代码中已包含防抖和安全检查逻辑，但作者不对因使用本工具导致的任何系统异常承担责任。建议在日常使用前进行简单测试。本程序目前未进行实机测试。
+
+本工具会对系统电源方案中的屏幕亮度配置进行读写操作。  
+尽管程序中已加入防抖、边界限制与错误检查机制，但在不同设备与系统环境下的行为可能存在差异。
+
+在日常使用前，建议用户自行进行测试以确认其行为符合预期。  
+作者不对因使用本工具而导致的任何系统异常、设置变化或数据损失承担责任。
 
 如遇 Bug，欢迎提交 Issue 反馈。
