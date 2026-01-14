@@ -18,7 +18,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4  # 更新到 v4
+      uses: actions/checkout@v4
 
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
@@ -30,14 +30,8 @@ jobs:
 
     - name: Compile PowerBrightnessSync
       shell: powershell
-      # 解释关键参数：
-      # /std:c++17 : 支持 std::clamp
-      # /O1 /Os : 最小体积优化
-      # /MT : 静态链接 CRT (无需安装 VC++ 运行库)
-      # /GS- : 移除缓冲区安全检查以减小体积 (可选)
-      # /MANIFESTUAC : 强制要求管理员权限 (核心修改)
       run: |
-        cl /nologo /EHsc /std:c++17 /O1 /Os /MT /GS- /GL /DNDEBUG /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 `
+        cl /nologo /EHsc /std:c++17 /O1 /Os /Gy /MT /GS- /GL /DNDEBUG /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 `
         PowerBrightnessSync.cpp `
         /link /LTCG /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup /OPT:REF /OPT:ICF `
         /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" `
@@ -49,7 +43,7 @@ jobs:
         Compress-Archive -Path build\PowerBrightnessSync.exe -DestinationPath build\PowerBrightnessSync.zip
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v4 # 更新到 v4
+      uses: actions/upload-artifact@v4
       with:
         name: PowerBrightnessSync-Build
         path: build/PowerBrightnessSync.exe
@@ -57,13 +51,13 @@ jobs:
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2 # 更新到 v2
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           build/PowerBrightnessSync.exe
           build/PowerBrightnessSync.zip
         draft: false
         prerelease: false
-        generate_release_notes: true # 自动生成更新日志
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

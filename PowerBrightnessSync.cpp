@@ -101,19 +101,18 @@ int ManageAutoRun(bool enable) {
     wchar_t exePath[MAX_PATH];
     if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) return 0;
 
-    std::wstring pathStr = L"\"" + std::wstring(exePath) + L"\"";
-    std::wstring args;
-
+    wchar_t args[MAX_PATH * 2];
+    
     if (enable) {
-        // 创建任务: 使用最高权限运行，登录时触发
-        args = L"/Create /F /RL HIGHEST /SC ONLOGON /TN \"PowerBrightnessSync\" /TR " + pathStr;
+        swprintf_s(args, MAX_PATH * 2, 
+            L"/Create /F /RL HIGHEST /SC ONLOGON /TN \"PowerBrightnessSync\" /TR \"\\\"%s\\\"\"", 
+            exePath);
     }
     else {
-        // 删除任务
-        args = L"/Delete /F /TN \"PowerBrightnessSync\"";
+        swprintf_s(args, MAX_PATH * 2, 
+            L"/Delete /F /TN \"PowerBrightnessSync\"");
     }
 
-    // 执行并根据结果返回 1 或 0
     return ExecuteSilent(args) ? 1 : 0;
 }
 
