@@ -14,6 +14,7 @@
 // ================= 常量定义 =================
 constexpr GUID kGuidSubVideo = { 0x7516b95f,0xf776,0x4464,{0x8c,0x53,0x06,0x16,0x7f,0x40,0xcc,0x99} };
 constexpr GUID kGuidVideoBrightness = { 0xaded5e82,0xb909,0x4619,{0x99,0x49,0xf5,0xd7,0x1d,0xac,0x0b,0xcb} };
+constexpr GUID kGuidConsoleDisplayState = { 0x6fe69556, 0x704a, 0x47a0, { 0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47 } };
 
 #define ID_TIMER_DEBOUNCE 1
 #define DEBOUNCE_DELAY_MS 400
@@ -95,8 +96,7 @@ void PerformSync() {
     LocalFree(pActive);
 }
 
-// ================= 自启逻辑 (已修复) =================
-// 匹配 wWinMain 中的调用签名：int ManageAutoRun(bool)
+// ================= 自启逻辑 =================
 int ManageAutoRun(bool enable) {
     wchar_t exePath[MAX_PATH];
     if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) return 0;
@@ -123,7 +123,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_POWERBROADCAST:
         if (wp == PBT_POWERSETTINGCHANGE && lp) {
             auto pbs = (PPOWERBROADCAST_SETTING)lp;
-            if (IsEqualGUID(pbs->PowerSetting, kGuidVideoBrightness)) {
+            if (IsEqualGUID(pbs->PowerSetting, kGuidVideoBrightness) || 
+                IsEqualGUID(pbs->PowerSetting, kGuidConsoleDisplayState)) {
                 SetTimer(hwnd, ID_TIMER_DEBOUNCE, DEBOUNCE_DELAY_MS, nullptr);
             }
         }
@@ -210,7 +211,8 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         return 1;
     }
 
-    HPOWERNOTIFY hNotify = RegisterPowerSettingNotification(hwnd, &kGuidVideoBrightness, DEVICE_NOTIFY_WINDOW_HANDLE);
+    HPOWERNOTIFY hNotifyBrightness = RegisterPowerSettingNotification(hwnd, &kGuidVideoBrightness, DEVICE_NOTIFY_WINDOW_HANDLE);
+    HPOWERNOTIFY hNotifyDisplay = RegisterPowerSettingNotification(hwnd, &kGuidConsoleDisplayState, DEVICE_NOTIFY_WINDOW_HANDLE);
     
     SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
 
@@ -220,7 +222,8 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         DispatchMessageW(&msg);
     }
 
-    if (hNotify) UnregisterPowerSettingNotification(hNotify);
+    if (hNotifyBrightness) UnregisterPowerSettingNotification(hNotifyBrightness);
+    if (hNotifyDisplay) UnregisterPowerSettingNotification(hNotifyDisplay);
     if (hMutex) CloseHandle(hMutex);
 
     return (int)msg.wParam;
