@@ -101,8 +101,6 @@ void PerformSync() {
             if (currentDC != dc) PowerWriteDCValueIndex(nullptr, &scheme, &kGuidSubVideo, &kGuidVideoBrightness, dc);
         }
     }
-    Sleep(60);
-    PowerSetActiveScheme(nullptr, &g_activeScheme);
     LocalFree(pActive);
 }
 
