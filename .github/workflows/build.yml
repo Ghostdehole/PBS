@@ -31,11 +31,22 @@ jobs:
     - name: Compile PowerBrightnessSync
       shell: powershell
       run: |
-        cl /nologo /EHsc /std:c++17 /O1 /Os /Gy /MT /GS- /GL /DNDEBUG /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 `
+        cl /nologo /W4 /EHsc /std:c++17 /O1 /Os /Gy /MT /GS- /GL /DNDEBUG /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 `
         PowerBrightnessSync.cpp `
+        ole32.lib oleaut32.lib `
         /link /LTCG /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup /OPT:REF /OPT:ICF `
         /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" `
         /OUT:build\PowerBrightnessSync.exe
+
+    - name: Verify Build
+      shell: powershell
+      run: |
+        if (Test-Path build\PowerBrightnessSync.exe) {
+            Write-Host "Build Successful"
+        } else {
+            Write-Error "Build Failed"
+            exit 1
+        }
 
     - name: Zip executable
       shell: powershell
