@@ -7,7 +7,6 @@
 #include <comdef.h>
 #include <wrl/client.h>
 #include <memory>
-#include <vector>
 
 using Microsoft::WRL::ComPtr;
 
@@ -58,7 +57,7 @@ void PerformSync() {
     bool isAC = (sps.ACLineStatus == 1);
 
     // 2. 获取当前实际生效的亮度值
-    DWORD currentBrightness = 50; // 默认值
+    DWORD currentBrightness = 50; // 初始值
     DWORD res = ERROR_SUCCESS;
     
     if (isAC) {
@@ -72,8 +71,7 @@ void PerformSync() {
     // 限制范围
     currentBrightness = std::clamp<DWORD>(currentBrightness, 0, 100);
 
-    // 3. 遍历所有方案，统一将 AC 和 DC 的亮度都设置为当前亮度
-    // 这样拔插电源时，亮度不会发生突变
+    //遍历所有方案，统一将 AC 和 DC 的亮度都设置为当前亮度
     DWORD index = 0;
     while (true) {
         GUID scheme;
@@ -98,9 +96,6 @@ void PerformSync() {
             }
         }
     }
-    
-    // 激活设置确保立即生效（通常不需要，但在某些系统上能强制刷新）
-    // PowerSetActiveScheme(nullptr, pActive); 
 }
 
 // ================= 自启逻辑 =================
@@ -204,7 +199,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 // ================= 入口点 =================
 int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
-    // 1. 命令行处理
+    // 命令行处理
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (argv && argc > 1) {
@@ -232,8 +227,8 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         if (argv) LocalFree(argv);
     }
 
-    // 2. 单例检查 (RAII 管理句柄)
-    HANDLE hMutexRaw = CreateMutexW(nullptr, TRUE, L"Global\\PowerBrightnessSync_Instance_v3");
+    // 单例检查 (RAII 管理句柄)
+    HANDLE hMutexRaw = CreateMutexW(nullptr, TRUE, L"Global\\PowerBrightnessSync_Mutex");
     DWORD lastErr = GetLastError();
     
     // 如果互斥体已存在(ERROR_ALREADY_EXISTS) 或 创建失败(NULL)，则退出
@@ -246,13 +241,13 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
     // 使用 unique_ptr 接管，确保 WinMain 退出时自动关闭句柄
     std::unique_ptr<void, decltype(&CloseHandle)> mutexGuard(hMutexRaw, CloseHandle);
 
-    // 3. 运行时检查
+    // 运行时检查
     if (!IsAdministrator()) return 0; // 静默退出，因为这是后台进程
 
-    // 4. 初始同步
+    // 初始同步
     PerformSync();
 
-    // 5. 窗口创建
+    // 窗口创建
     WNDCLASSW wc = { 0 };
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInst;
@@ -262,14 +257,11 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
     HWND hwnd = CreateWindowExW(0, wc.lpszClassName, nullptr, 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, hInst, nullptr);
     if (!hwnd) return 1;
 
-    // 6. 注册通知
+    // 注册通知
     HPOWERNOTIFY hN1 = RegisterPowerSettingNotification(hwnd, &kGuidVideoBrightness, DEVICE_NOTIFY_WINDOW_HANDLE);
     HPOWERNOTIFY hN2 = RegisterPowerSettingNotification(hwnd, &kGuidConsoleDisplayState, DEVICE_NOTIFY_WINDOW_HANDLE);
 
-    // 7. 内存优化
-    SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
-
-    // 8. 消息循环
+    // 消息循环
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
