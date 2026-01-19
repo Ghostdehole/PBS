@@ -84,6 +84,20 @@ PowerBrightnessSync.exe --ofar
 
 ---
 
+## ℹ️ AC / DC Brightness Behavior
+
+* On Windows 10 (1903+) and Windows 11, AC (plugged in) and DC (battery) brightness are typically unified within the same power plan.  
+  Switching power sources usually does not change the brightness.
+
+* In such cases, this program may not show noticeable effects — this is normal and does not indicate a malfunction.
+
+* The tool is still useful for older Windows versions, certain OEM drivers, or devices where AC/DC brightness differs.  
+  Its main goal is to **unify brightness across different power plans**.
+
+* Built using the official Windows Power Management API; behavior may vary depending on system version and hardware.
+
+---
+
 ## 🛠️ Build Guide
 
 If you wish to compile the source yourself:
