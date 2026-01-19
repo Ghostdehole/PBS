@@ -6,9 +6,9 @@
 
 It effectively solves the visual annoyance where Windows brightness suddenly "jumps" when plugging/unplugging the power cable, switching power modes, or waking the display.
 
-![Platform](https://img.shields.io/badge/platform-Windows-blue)
-![License](https://img.shields.io/github/license/Ghostdehole/PBS?color=green)
-![Release](https://img.shields.io/github/v/release/Ghostdehole/PBS?color=brightgreen)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Ghostdehole/PBS)
+[![License](https://img.shields.io/github/license/Ghostdehole/PBS?color=green)](https://github.com/Ghostdehole/PBS/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/v/release/Ghostdehole/PBS?color=brightgreen)](https://github.com/Ghostdehole/PBS/releases)
 
 ---
 
