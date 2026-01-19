@@ -259,7 +259,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         bool isSetup = true;
         if (lstrcmpiW(argv[1], L"--onar") == 0) {
             if (IsAdministrator()) {
-                ManageAutoRun(true) ? MessageBoxW(0, L"Auto-start enabled", L"Success", 64)
+                ManageAutoRun(true) ? MessageBoxW(0, L"Auto-run enabled", L"Success", 64)
                                     : MessageBoxW(0, L"Setup failed", L"Error", 16);
             } else {
                 MessageBoxW(0, L"Administrator privileges required", L"Error", 16);
@@ -267,7 +267,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         } else if (lstrcmpiW(argv[1], L"--ofar") == 0) {
             if (IsAdministrator()) {
                 ManageAutoRun(false);
-                MessageBoxW(0, L"Auto-start disabled", L"Success", 64);
+                MessageBoxW(0, L"Auto-run disabled", L"Success", 64);
             } else {
                 MessageBoxW(0, L"Administrator privileges required", L"Error", 16);
             }
@@ -281,7 +281,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
 
     // --- Mutex Handling ---
     HANDLE hMutexRaw = CreateMutexW(nullptr, TRUE, L"Local\\PowerBrightnessSync_Mutex");
-    
+
     // FIX: Define a clean deleter for HANDLEs to ensure correct types
     struct HandleCloser { 
         void operator()(HANDLE h) { if (h) CloseHandle(h); } 
