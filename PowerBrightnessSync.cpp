@@ -1,12 +1,14 @@
 #include <windows.h>
 #include <powrprof.h>
-//#include <algorithm>
+#include <algorithm>
 #include <string>
 #include <shellapi.h>
 #include <taskschd.h>
 #include <comdef.h>
 #include <wrl/client.h>
 #include <memory>
+#include <vector>
+#include <atomic>
 
 using Microsoft::WRL::ComPtr;
 
@@ -45,11 +47,19 @@ bool IsAdministrator() {
 
 // ================= Core Sync Logic =================
 void PerformSync() {
+    static std::atomic_bool syncing{ false };
+    if (syncing.exchange(true)) return;
+
+    // RAII wrapper to ensure syncing is set to false on exit
+    struct SyncGuard {
+        ~SyncGuard() { syncing = false; }
+    } syncGuard;
     GUID* pActive = nullptr;
     if (PowerGetActiveScheme(nullptr, &pActive) != ERROR_SUCCESS) return;
-    
+
     // Use unique_ptr to ensure pActive is freed even on early return
-    std::unique_ptr<GUID, decltype(&LocalFree)> activeGuard(pActive, LocalFree);
+    auto localFreeDeleter = [](void* ptr) { LocalFree(static_cast<HLOCAL>(ptr)); };
+    std::unique_ptr<GUID, decltype(localFreeDeleter)> activeGuard(pActive, localFreeDeleter);
 
     // Get current power status (AC or DC)
     SYSTEM_POWER_STATUS sps;
@@ -59,7 +69,7 @@ void PerformSync() {
     // Get the currently effective brightness value
     DWORD currentBrightness = 50;
     DWORD res = ERROR_SUCCESS;
-    
+
     if (isAC) {
         res = PowerReadACValueIndex(nullptr, pActive, &kGuidSubVideo, &kGuidVideoBrightness, &currentBrightness);
     } else {
@@ -69,14 +79,20 @@ void PerformSync() {
     if (res != ERROR_SUCCESS) return;
 
     // Limit range
-    //currentBrightness = std::clamp<DWORD>(currentBrightness, 0, 100);
+    currentBrightness = std::clamp<DWORD>(currentBrightness, 0, 100);
 
     // Iterate all schemes, unify AC and DC brightness to the current value
     DWORD index = 0;
     while (true) {
         GUID scheme;
         DWORD bufSize = sizeof(scheme);
-        if (PowerEnumerate(nullptr, nullptr, nullptr, ACCESS_SCHEME, index, (UCHAR*)&scheme, &bufSize) != ERROR_SUCCESS) {
+        DWORD err = PowerEnumerate(nullptr, nullptr, nullptr, ACCESS_SCHEME, index, (UCHAR*)&scheme, &bufSize);
+        if (err == ERROR_MORE_DATA) {
+            // Retry once if the system indicates more data (transient or buffer size issue)
+            bufSize = sizeof(scheme);
+            err = PowerEnumerate(nullptr, nullptr, nullptr, ACCESS_SCHEME, index, (UCHAR*)&scheme, &bufSize);
+        }
+        if (err != ERROR_SUCCESS) {
             break;
         }
         index++;
@@ -90,6 +106,7 @@ void PerformSync() {
         }
 
         // Read and update DC value
+        tempVal = 0;
         if (PowerReadDCValueIndex(nullptr, &scheme, &kGuidSubVideo, &kGuidVideoBrightness, &tempVal) == ERROR_SUCCESS) {
             if (tempVal != currentBrightness) {
                 PowerWriteDCValueIndex(nullptr, &scheme, &kGuidSubVideo, &kGuidVideoBrightness, currentBrightness);
@@ -102,25 +119,63 @@ void PerformSync() {
 int ManageAutoRun(bool enable) {
     const std::wstring kTaskName = L"PowerBrightnessSync";
 
-    HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) return 0;
-    struct CoUninitializer { ~CoUninitializer() { CoUninitialize(); } } autoCoUninit;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    bool comInitialized = SUCCEEDED(hr);
+// RPC_E_CHANGED_MODE means COM already initialized with a different model (likely STA).
+// Task Scheduler COM interfaces are OK to be used in this case.
+    struct CoUninitializer {
+        ~CoUninitializer() { CoUninitialize(); }
+    };
+    std::unique_ptr<CoUninitializer> coUninitGuard;
+    if (comInitialized) {
+        coUninitGuard = std::make_unique<CoUninitializer>();
+    } else if (hr != RPC_E_CHANGED_MODE) {
+        return 0;
+    }
 
-    // Add exception handling to prevent _bstr_t from throwing
     try {
-        hr = CoInitializeSecurity(NULL, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, 0, NULL);
+        hr = CoInitializeSecurity(
+            nullptr, -1, nullptr, nullptr,
+            RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
+            RPC_C_IMP_LEVEL_IMPERSONATE,
+            nullptr, EOAC_NONE, nullptr
+        );
         if (FAILED(hr) && hr != RPC_E_TOO_LATE) return 0;
 
         ComPtr<ITaskService> pService;
-        if (FAILED(CoCreateInstance(CLSID_TaskScheduler, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pService)))) return 0;
+        if (FAILED(CoCreateInstance(CLSID_TaskScheduler, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pService))))
+            return 0;
         if (FAILED(pService->Connect(_variant_t(), _variant_t(), _variant_t(), _variant_t()))) return 0;
 
         ComPtr<ITaskFolder> pRootFolder;
         if (FAILED(pService->GetFolder(_bstr_t(L"\\"), &pRootFolder))) return 0;
 
-        pRootFolder->DeleteTask(_bstr_t(kTaskName.c_str()), 0);
+        hr = pRootFolder->DeleteTask(_bstr_t(kTaskName.c_str()), 0);
+        if (FAILED(hr) && hr != HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
+             return 0;
+        }
 
-        if (!enable) return 1;
+        if (!enable) return 1; // To disable, simply delete old tasks.
+
+        std::wstring exePath;
+        DWORD len = 0;
+
+        std::vector<wchar_t> pathBuf(MAX_PATH);
+
+        while (true) {
+            len = GetModuleFileNameW(nullptr, pathBuf.data(), (DWORD)pathBuf.size());
+            if (len == 0) return 0; // Error
+
+            if (len < pathBuf.size()) {
+                break;
+            }
+
+            // Check for overflow/limit
+            if (pathBuf.size() > 65535) return 0; 
+            pathBuf.resize(pathBuf.size() * 2);
+        }
+
+        exePath.assign(pathBuf.data(), len);
 
         ComPtr<ITaskDefinition> pTask;
         if (FAILED(pService->NewTask(0, &pTask))) return 0;
@@ -142,9 +197,9 @@ int ManageAutoRun(bool enable) {
         if (FAILED(pTask->get_Triggers(&pTriggerCollection))) return 0;
         ComPtr<ITrigger> pTrigger;
         if (FAILED(pTriggerCollection->Create(TASK_TRIGGER_LOGON, &pTrigger))) return 0;
-
-        wchar_t exePath[MAX_PATH];
-        if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) return 0;
+        ComPtr<ILogonTrigger> pLogonTrigger;
+        if (FAILED(pTrigger->QueryInterface(IID_PPV_ARGS(&pLogonTrigger)))) return 0;
+        pLogonTrigger->put_Delay(_bstr_t(L"PT5S"));
 
         ComPtr<IActionCollection> pActionCollection;
         if (FAILED(pTask->get_Actions(&pActionCollection))) return 0;
@@ -152,12 +207,12 @@ int ManageAutoRun(bool enable) {
         if (FAILED(pActionCollection->Create(TASK_ACTION_EXEC, &pAction))) return 0;
         ComPtr<IExecAction> pExecAction;
         if (FAILED(pAction->QueryInterface(IID_PPV_ARGS(&pExecAction)))) return 0;
-        pExecAction->put_Path(_bstr_t(exePath));
+        pExecAction->put_Path(_bstr_t(exePath.c_str()));
 
         ComPtr<IRegisteredTask> pRegisteredTask;
         hr = pRootFolder->RegisterTaskDefinition(
             _bstr_t(kTaskName.c_str()), pTask.Get(), TASK_CREATE_OR_UPDATE,
-            _variant_t(), _variant_t(), TASK_LOGON_INTERACTIVE_TOKEN, _variant_t(L""), &pRegisteredTask);
+            _variant_t(), _variant_t(), TASK_LOGON_INTERACTIVE_TOKEN, _variant_t(), &pRegisteredTask);
 
         return SUCCEEDED(hr) ? 1 : 0;
     }
@@ -174,12 +229,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             auto pbs = (PPOWERBROADCAST_SETTING)lp;
             if (IsEqualGUID(pbs->PowerSetting, kGuidVideoBrightness) || 
                 IsEqualGUID(pbs->PowerSetting, kGuidConsoleDisplayState)) {
+                KillTimer(hwnd, ID_TIMER_DEBOUNCE); // Prevent stacking
                 SetTimer(hwnd, ID_TIMER_DEBOUNCE, DEBOUNCE_DELAY_MS, nullptr);
             }
-        }
-        // Add listener for power source change (to prevent sync delay when plugging/unplugging power)
-        else if (wp == PBT_APMPOWERSTATUSCHANGE) {
-            SetTimer(hwnd, ID_TIMER_DEBOUNCE, DEBOUNCE_DELAY_MS, nullptr);
         }
         return TRUE;
 
@@ -199,14 +251,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 // ================= Entry Point =================
 int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
-    // Command line handling
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    auto argsDeleter = [](LPWSTR* ptr) { if (ptr) LocalFree(static_cast<HLOCAL>(ptr)); };
+    std::unique_ptr<LPWSTR, decltype(argsDeleter)> argvGuard(argv, argsDeleter);
     if (argv && argc > 1) {
         bool isSetup = true;
         if (lstrcmpiW(argv[1], L"--onar") == 0) {
             if (IsAdministrator()) {
-                ManageAutoRun(true) ? MessageBoxW(0, L"Auto-start enabled", L"Success", 64) 
+                ManageAutoRun(true) ? MessageBoxW(0, L"Auto-start enabled", L"Success", 64)
                                     : MessageBoxW(0, L"Setup failed", L"Error", 16);
             } else {
                 MessageBoxW(0, L"Administrator privileges required", L"Error", 16);
@@ -221,28 +274,27 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         } else {
             isSetup = false;
         }
-        if (argv) LocalFree(argv);
+
+        // RAII handles cleanup of argv here automatically
         if (isSetup) return 0;
-    } else {
-        if (argv) LocalFree(argv);
     }
 
-    // Singleton check (RAII manages handle)
-    HANDLE hMutexRaw = CreateMutexW(nullptr, TRUE, L"Global\\PowerBrightnessSync_Mutex");
-    DWORD lastErr = GetLastError();
+    // --- Mutex Handling ---
+    HANDLE hMutexRaw = CreateMutexW(nullptr, TRUE, L"Local\\PowerBrightnessSync_Mutex");
     
-    // If the mutex already exists (ERROR_ALREADY_EXISTS) or creation fails (NULL), exit
-    // Note: if we just created it, hMutexRaw is not null and lastErr is 0
-    if (hMutexRaw == nullptr || lastErr == ERROR_ALREADY_EXISTS) {
-        if (hMutexRaw) CloseHandle(hMutexRaw);
-        return 0;
-    }
+    // FIX: Define a clean deleter for HANDLEs to ensure correct types
+    struct HandleCloser { 
+        void operator()(HANDLE h) { if (h) CloseHandle(h); } 
+    };
+    // unique_ptr<void> is valid for HANDLE (void*) if we provide a deleter
+    std::unique_ptr<void, HandleCloser> mutexGuard(hMutexRaw);
 
-    // Use unique_ptr to manage handle, ensuring WinMain exit automatically closes it
-    std::unique_ptr<void, decltype(&CloseHandle)> mutexGuard(hMutexRaw, CloseHandle);
+    if (!hMutexRaw || GetLastError() == ERROR_ALREADY_EXISTS) {
+        return 0; // mutexGuard automatically calls CloseHandle
+    }
 
     // Runtime check
-    if (!IsAdministrator()) return 0; // Silent exit because this is a background process
+    if (!IsAdministrator()) return 0; 
 
     // Initial sync
     PerformSync();
@@ -260,6 +312,16 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
     // Register notifications
     HPOWERNOTIFY hN1 = RegisterPowerSettingNotification(hwnd, &kGuidVideoBrightness, DEVICE_NOTIFY_WINDOW_HANDLE);
     HPOWERNOTIFY hN2 = RegisterPowerSettingNotification(hwnd, &kGuidConsoleDisplayState, DEVICE_NOTIFY_WINDOW_HANDLE);
+
+    if (!hN1 || !hN2) {
+        // Registration failed: Clean up partial successes to avoid leaks
+        if (hN1) UnregisterPowerSettingNotification(hN1);
+        if (hN2) UnregisterPowerSettingNotification(hN2);
+        
+        // Destroy the hidden window and exit
+        DestroyWindow(hwnd); 
+        return 1; 
+    }
 
     // Message loop
     MSG msg;

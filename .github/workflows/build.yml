@@ -33,7 +33,7 @@ jobs:
       run: |
         cl /nologo /W4 /EHsc /std:c++17 /O1 /Os /Gy /MT /GS- /GL /DNDEBUG /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 `
         PowerBrightnessSync.cpp `
-        ole32.lib oleaut32.lib `
+        ole32.lib oleaut32.lib comsuppw.lib taskschd.lib `
         /link /LTCG /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup /OPT:REF /OPT:ICF `
         /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" `
         /OUT:build\PowerBrightnessSync.exe
