@@ -1,0 +1,95 @@
+# OPERATING SYSTEMS & LOGS
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+*~
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# EDITORS & IDEs
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# SECRETS & ENVIRONMENT
+.env
+.env.*.local
+!.env.example
+*.pem
+*.key
+*.pfx
+*.crt
+*.csr
+id_rsa
+.aws/
+
+# NODE / FRONTEND
+node_modules/
+.pnp.*
+dist/
+build/
+.out/
+coverage/
+.next/
+.nuxt/
+.cache/
+.eslintcache
+.vercel/
+.netlify/
+
+# PYTHON
+__pycache__/
+*.py[cod]
+.venv/
+env/
+**/venv/
+.mypy_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# JAVA / GRADLE
+*.class
+*.jar
+*.war
+build/
+target/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# MOBILE
+ios/Pods/
+*.xcworkspace
+*.dSYM
+*.apk
+*.aab
+
+# DATABASES
+*.sqlite
+*.db
+*.sql
+!migrations/
+!schema.sql
+
+# DEVOPS & INFRA
+docker-compose.override.yml
+.terraform/
+*.tfstate
+
+# ARCHIVES & BINARIES
+*.zip
+*.tar.gz
+*.rar
+*.exe
+*.dll
+*.so
+*.dylib
